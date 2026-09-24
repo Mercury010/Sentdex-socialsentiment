@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.1.0] - 2026-09-24
+
+### Added
+- `socialsentiment check`: connectivity and credential self-test for
+  Bluesky, RSS feeds, Reddit and X, with a hint for every failure.
+
 ## [2.0.0] - 2026-09-24
 
 Complete rewrite. The 2018 code base (Twitter v1.1 stream, Tweepy 3,
