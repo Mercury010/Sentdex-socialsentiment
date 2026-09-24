@@ -1,13 +1,18 @@
-# Social Sentiment 2.0
+# socialsentiment
+
+[![CI](https://github.com/Mercury010/socialsentiment/actions/workflows/ci.yml/badge.svg)](https://github.com/Mercury010/socialsentiment/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 Live social-media and news sentiment for any search term, on a Dash
 dashboard, with SQLite full-text search underneath.
 
-Originally a fork of Sentdex's 2018 [socialsentiment](https://github.com/Sentdex/socialsentiment)
-(Twitter v1.1 stream → VADER → Dash 0.x). That code no longer runs: the
-Twitter endpoint it used was shut down, and Tweepy 3 / Dash 0.x APIs were
-removed years ago. Version 2.0 is a rewrite that keeps the idea and replaces
-every moving part.
+Maintained by Thomas V. Tomaras. Originally a fork of Sentdex's 2018
+[socialsentiment](https://github.com/Sentdex/socialsentiment) (Twitter v1.1
+stream → VADER → Dash 0.x); that code no longer runs, because the Twitter
+endpoint it used was shut down and the Tweepy 3 / Dash 0.x APIs were removed
+years ago. Version 2.0 is a rewrite that keeps the idea and replaces every
+moving part. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Σύνοψη (EL)
 
@@ -52,8 +57,8 @@ sentiment share, related και trending terms. Όλα τα paths και ονό�
 ## Quick start
 
 ```bash
-git clone https://github.com/Mercury010/Sentdex-socialsentiment.git
-cd Sentdex-socialsentiment
+git clone https://github.com/Mercury010/socialsentiment.git
+cd socialsentiment
 python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env                                   # optional; defaults work
@@ -129,6 +134,9 @@ pip install -e ".[dev]"
 flake8                      # PEP 8, 88-column lines (setup.cfg)
 pytest                      # unit + HTTP-level dashboard tests
 ```
+
+The same two commands run in GitHub Actions on every push and pull request
+(Python 3.10, 3.11 and 3.12; see `.github/workflows/ci.yml`).
 
 Layout:
 

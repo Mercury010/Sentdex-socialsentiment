@@ -10,6 +10,21 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
+authors = [{ name = "Thomas V. Tomaras" }]
+keywords = [
+    "sentiment-analysis", "vader", "dash", "plotly", "bluesky", "reddit",
+    "rss", "sqlite", "fts5", "finance", "crypto",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Text Processing :: Linguistic",
+]
 dependencies = [
     "dash>=3.0",
     "plotly>=6.0",
@@ -24,6 +39,12 @@ dependencies = [
 reddit = ["praw>=7.7"]
 x = ["tweepy>=4.14"]
 dev = ["pytest>=8", "flake8>=7", "praw>=7.7", "tweepy>=4.14"]
+
+[project.urls]
+Homepage = "https://github.com/Mercury010/socialsentiment"
+Repository = "https://github.com/Mercury010/socialsentiment"
+Issues = "https://github.com/Mercury010/socialsentiment/issues"
+Changelog = "https://github.com/Mercury010/socialsentiment/blob/master/CHANGELOG.md"
 
 [project.scripts]
 socialsentiment = "socialsentiment.cli:main"
