@@ -86,14 +86,17 @@ python -m socialsentiment collect --source x --term bitcoin
 
 Other commands: `stats` (counts per source, trending), `truncate --days N`
 (retention purge; also runs hourly inside `collect`). `--db PATH` overrides
-the database location for any command; `-v` enables debug logging.
+the database location for any command and may go before or after the
+sub-command (`stats --db demo.db`); `-v` enables debug logging.
 
 ## Configuration
 
 Everything lives in `socialsentiment/settings.py` and can be overridden with
-`SS_*` environment variables or a `.env` file. Directories and file names are
+`SS_*` environment variables or a `.env` file (read from the working
+directory first, then from the checkout root). Directories and file names are
 separate settings (`SS_DATA_DIR`, `SS_DB_FILENAME`, `SS_LOG_FILENAME`), so a
-deployment can move data without touching code. See `.env.example` for the
+deployment can move data without touching code. By default data and logs go
+to `./data` under the directory you run from. See `.env.example` for the
 full list.
 
 Notable knobs:
@@ -155,6 +158,9 @@ tests/            pytest suite
   bounded). Set terms if you only care about a watch-list.
 * SQLite FTS5 is required (bundled with Python's `sqlite3` on all major
   platforms).
+* Posts older than the retention window or more than five minutes in the
+  future are dropped at ingest, so a stale feed item or a client with a
+  broken clock cannot distort the live window.
 
 ## License
 

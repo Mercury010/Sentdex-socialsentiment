@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from socialsentiment import settings
@@ -57,7 +57,13 @@ def parse_submission(submission: Any) -> Post | None:
 
 
 class RedditCollector(Collector):
-    """Stream new comments (and optionally submissions) from subreddits."""
+    """Stream new comments (and optionally submissions) from subreddits.
+
+    Each stream runs in its own worker thread.  If either worker dies (PRAW
+    re-raises server and network errors from the stream generator) the whole
+    connection is torn down and :meth:`Collector.run` reconnects with
+    back-off, so a single 5xx cannot silently stop the comment stream.
+    """
 
     name = "reddit"
 
@@ -85,6 +91,7 @@ class RedditCollector(Collector):
         self.client_secret = client_secret
         self.user_agent = user_agent
         self.include_submissions = include_submissions
+        self._connections = 0
 
     def _reddit(self) -> Any:
         import praw
@@ -96,46 +103,66 @@ class RedditCollector(Collector):
             check_for_async=False,
         )
 
-    def _consume(self, stream: Any, parser: Any, stop_event: Any) -> None:
+    def _consume(
+        self,
+        stream: Callable[..., Any],
+        parser: Callable[[Any], Post | None],
+        stop_event: threading.Event,
+        local_stop: threading.Event,
+        skip_existing: bool,
+    ) -> None:
         # ``pause_after`` makes the generator yield ``None`` after that many
-        # empty polls, which gives us a chance to observe ``stop_event``.
-        for item in stream(skip_existing=True, pause_after=2):
-            if stop_event.is_set():
-                return
-            if item is None:
-                continue
-            post = parser(item)
-            if post is not None:
-                self.emit(post)
+        # empty polls, which gives us a chance to observe the stop events.
+        try:
+            for item in stream(skip_existing=skip_existing, pause_after=2):
+                if stop_event.is_set() or local_stop.is_set():
+                    return
+                if item is None:
+                    continue
+                post = parser(item)
+                if post is not None:
+                    self.emit(post)
+        except Exception:
+            log.exception("reddit: %s stream failed", parser.__name__)
+        finally:
+            local_stop.set()
 
     def run_once(self, stop_event: threading.Event) -> None:
         reddit = self._reddit()
         subreddit = reddit.subreddit("+".join(self.subreddits))
+        # Skip the backlog only on the very first connection; after a
+        # reconnect the overlap is harmless (the DB de-duplicates) and
+        # skipping would lose everything posted during the outage.
+        skip_existing = self._connections == 0
+        self._connections += 1
+        local_stop = threading.Event()
         log.info("reddit: streaming r/%s", "+".join(self.subreddits))
+        streams: list[tuple[Any, Callable[[Any], Post | None], str]] = [
+            (subreddit.stream.comments, parse_comment, "reddit-comments")
+        ]
+        if self.include_submissions:
+            streams.append(
+                (
+                    subreddit.stream.submissions,
+                    parse_submission,
+                    "reddit-submissions",
+                )
+            )
         workers = [
             threading.Thread(
                 target=self._consume,
-                args=(subreddit.stream.comments, parse_comment, stop_event),
-                name="reddit-comments",
+                args=(stream, parser, stop_event, local_stop, skip_existing),
+                name=name,
                 daemon=True,
             )
+            for stream, parser, name in streams
         ]
-        if self.include_submissions:
-            workers.append(
-                threading.Thread(
-                    target=self._consume,
-                    args=(
-                        subreddit.stream.submissions,
-                        parse_submission,
-                        stop_event,
-                    ),
-                    name="reddit-submissions",
-                    daemon=True,
-                )
-            )
         for worker in workers:
             worker.start()
-        while not stop_event.is_set() and any(w.is_alive() for w in workers):
+        while not stop_event.is_set() and not local_stop.is_set():
             stop_event.wait(1.0)
+        local_stop.set()
         for worker in workers:
             worker.join(timeout=5.0)
+        if not stop_event.is_set():
+            raise RuntimeError("reddit: a stream worker died; reconnecting")

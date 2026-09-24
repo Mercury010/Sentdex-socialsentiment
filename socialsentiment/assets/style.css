@@ -45,17 +45,20 @@ body {
 }
 .term-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* Dash dropdown (react-select) recolouring for the dark surface. */
-.Select-control, .Select-menu-outer, .Select-menu {
-  background: var(--surface) !important; border-color: var(--border) !important;
-  color: var(--ink) !important;
+/* Dash 4 dcc design tokens (dcc.Dropdown etc.) mapped onto the dark palette.
+   dcc injects its own :root block before this stylesheet, so these win. */
+:root {
+  --Dash-Fill-Inverse-Strong: var(--surface);
+  --Dash-Text-Strong: var(--ink);
+  --Dash-Text-Primary: var(--ink);
+  --Dash-Text-Weak: var(--ink-2);
+  --Dash-Text-Disabled: var(--muted);
+  --Dash-Stroke-Strong: var(--border);
+  --Dash-Fill-Primary-Hover: var(--grid);
+  --Dash-Fill-Primary-Active: var(--grid);
+  --Dash-Fill-Disabled: var(--grid);
+  --Dash-Fill-Interactive-Strong: var(--accent);
 }
-.Select-value-label, .Select-placeholder, .Select-input > input, .Select-option {
-  color: var(--ink) !important; background: transparent !important;
-}
-.Select-option.is-focused { background: var(--grid) !important; }
-.Select-value { background: var(--grid) !important; border-color: var(--border) !important; }
-.Select-value-icon { border-color: var(--border) !important; color: var(--ink-2) !important; }
 
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
 .tile {
@@ -88,7 +91,7 @@ body {
 
 .posts { width: 100%; border-collapse: collapse; font-size: 13px; }
 .posts th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--grid); }
-.posts td { padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+.posts td { padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; overflow-wrap: anywhere; }
 .posts td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
 .posts td.time { white-space: nowrap; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .posts td.src { color: var(--muted); white-space: nowrap; }

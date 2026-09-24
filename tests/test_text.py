@@ -54,3 +54,15 @@ def test_term_counts_and_contains_any():
     assert counts["rally"] == 1 and counts["bitcoin"] == 0
     assert contains_any("Big BITCOIN move", ["bitcoin"])
     assert not contains_any("gold", ["bitcoin", "eth"])
+
+
+def test_strip_html_keeps_escaped_brackets():
+    assert strip_html("Bitcoin drops &lt;5%&gt; as <b>ETF</b> outflows") == (
+        "Bitcoin drops <5%> as ETF outflows"
+    )
+
+
+def test_contractions_do_not_become_content_words():
+    assert tokenize("I don't think it's a trap, bitcoin's rally") == [
+        "trap", "bitcoin", "rally"
+    ]

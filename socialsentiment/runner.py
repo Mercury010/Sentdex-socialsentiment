@@ -33,8 +33,12 @@ def purge_expired(conn: Any, retention_days: int) -> int:
 
 
 def _maintenance_loop(db_path: Path, stop_event: threading.Event) -> None:
-    conn = storage.connect(db_path)
-    storage.init_schema(conn)
+    try:
+        conn = storage.connect(db_path)
+        storage.init_schema(conn)
+    except Exception:
+        log.exception("maintenance thread could not open %s", db_path)
+        return
     next_trending = 0.0
     next_purge = time.monotonic() + 60.0
     try:
@@ -63,17 +67,29 @@ def _maintenance_loop(db_path: Path, stop_event: threading.Event) -> None:
         conn.close()
 
 
-def _install_signal_handlers(stop_event: threading.Event) -> None:
+def _install_signal_handlers(stop_event: threading.Event) -> dict[int, Any]:
+    """Route SIGINT/SIGTERM to ``stop_event``; return the previous handlers."""
+
     def _handler(signum: int, _frame: Any) -> None:
         log.info("signal %s received, shutting down", signum)
         stop_event.set()
 
+    previous: dict[int, Any] = {}
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
-            signal.signal(sig, _handler)
+            previous[sig] = signal.signal(sig, _handler)
         except ValueError:
             # Not in the main thread (e.g. embedded in a notebook).
-            return
+            break
+    return previous
+
+
+def _restore_signal_handlers(previous: dict[int, Any]) -> None:
+    for sig, handler in previous.items():
+        try:
+            signal.signal(sig, handler)
+        except (ValueError, TypeError):
+            pass
 
 
 def run(
@@ -86,19 +102,35 @@ def run(
     stop_event: threading.Event | None = None,
     status_interval: float = 30.0,
 ) -> None:
-    """Block until interrupted, feeding posts from ``sources`` into the DB."""
+    """Block until interrupted, feeding posts from ``sources`` into the DB.
+
+    Raises ``RuntimeError`` if the batch writer dies, so a supervisor sees a
+    non-zero exit instead of a process that runs but stores nothing.
+    """
     if not sources:
         raise ValueError("at least one source is required")
     db_path = Path(db_path)
     stop_event = stop_event or threading.Event()
     options = collector_options or {}
 
+    # Create the file and switch it to WAL from this thread before any
+    # worker connects, so the workers never race on a brand-new database.
+    conn = storage.connect(db_path)
+    storage.init_schema(conn)
+    conn.close()
+
     writer = storage.BatchWriter(db_path, settings.WRITE_FLUSH_SECONDS)
     writer.start()
 
+    base_options: dict[str, Any] = {
+        "terms": terms,
+        "langs": langs,
+        "max_age_ms": settings.RETENTION_DAYS * 86_400_000,
+        "max_future_ms": settings.MAX_FUTURE_SKEW_SECONDS * 1000,
+    }
     collectors: list[Collector] = [
         create_collector(
-            name, writer.submit, terms=terms, langs=langs, **options.get(name, {})
+            name, writer.submit, **{**base_options, **options.get(name, {})}
         )
         for name in sources
     ]
@@ -118,7 +150,7 @@ def run(
         daemon=True,
     )
 
-    _install_signal_handlers(stop_event)
+    previous_handlers = _install_signal_handlers(stop_event)
     log.info(
         "collecting %s into %s (terms=%s, langs=%s)",
         ", ".join(sources),
@@ -128,23 +160,42 @@ def run(
     )
     for thread in [*threads, maintenance]:
         thread.start()
+    maintenance_reported = False
+    next_status = time.monotonic() + status_interval
     try:
-        while not stop_event.wait(status_interval):
-            log.info(
-                "status: received=%d inserted=%d pending=%d | %s",
-                writer.received,
-                writer.inserted,
-                writer.pending,
-                " ".join(
-                    f"{c.name}={c.emitted}/{c.dropped}" for c in collectors
-                ),
-            )
+        while not stop_event.wait(1.0):
+            if not writer.is_alive():
+                raise RuntimeError(f"batch writer died: {writer.failed!r}")
+            if not maintenance.is_alive() and not maintenance_reported:
+                maintenance_reported = True
+                log.error(
+                    "maintenance thread died; trending and retention "
+                    "purge are off until restart"
+                )
+            if time.monotonic() >= next_status:
+                next_status = time.monotonic() + status_interval
+                log.info(
+                    "status: received=%d inserted=%d dropped=%d pending=%d "
+                    "| %s",
+                    writer.received,
+                    writer.inserted,
+                    writer.dropped,
+                    writer.pending,
+                    " ".join(
+                        f"{c.name}={c.emitted}/{c.dropped}"
+                        for c in collectors
+                    ),
+                )
     finally:
         stop_event.set()
         for thread in threads:
             thread.join(timeout=10.0)
         maintenance.join(timeout=5.0)
         writer.stop()
+        _restore_signal_handlers(previous_handlers)
         log.info(
-            "stopped: received=%d inserted=%d", writer.received, writer.inserted
+            "stopped: received=%d inserted=%d dropped=%d",
+            writer.received,
+            writer.inserted,
+            writer.dropped,
         )

@@ -19,6 +19,7 @@ from plotly.subplots import make_subplots
 
 from socialsentiment import __version__, analytics, settings, storage
 from socialsentiment.sentiment import classify
+from socialsentiment.text import fts_query
 from socialsentiment.trending import related_terms
 
 # Colour tokens (dark surface).  Keep in sync with assets/style.css.
@@ -229,6 +230,18 @@ def term_chips(stats: dict[str, list[float]], kind: str) -> list[Any]:
     return chips
 
 
+TABLE_TEXT_LIMIT = 280
+
+
+def _label(term: str) -> str:
+    """Describe the active filter; warn when the term has no searchable words."""
+    if not term:
+        return "all posts"
+    if not fts_query(term):
+        return f'"{term}" (no searchable words, showing all posts)'
+    return f'"{term}"'
+
+
 def _tile(label: str, value: str, sub: str = "") -> html.Div:
     children = [
         html.Div(label, className="tile-label"),
@@ -243,19 +256,36 @@ def _fmt_pct(value: float | None) -> str:
     return "–" if value is None else f"{value:.0f}%"
 
 
+def _format_stamp(ts_ms: Any) -> str:
+    try:
+        stamp = datetime.fromtimestamp(float(ts_ms) / 1000, tz=timezone.utc)
+    except (ValueError, OverflowError, OSError, TypeError):
+        return "–"
+    return stamp.strftime("%d/%m %H:%M:%S")
+
+
 def posts_table(posts: pd.DataFrame) -> html.Table:
+    """Recent posts; long bodies are truncated for display (full text in
+    the tooltip) so a Reddit essay cannot blow the layout apart."""
     rows = []
     for row in posts.itertuples(index=False):
-        stamp = datetime.fromtimestamp(row.ts_ms / 1000, tz=timezone.utc)
         label = classify(float(row.sentiment))
         css = "pos" if label > 0 else "neg" if label < 0 else "neu"
-        text: Any = row.text
+        full = str(row.text)
+        shown = (
+            full if len(full) <= TABLE_TEXT_LIMIT
+            else full[:TABLE_TEXT_LIMIT].rstrip() + "…"
+        )
         if row.url:
-            text = html.A(row.text, href=row.url, target="_blank", rel="noopener")
+            text: Any = html.A(
+                shown, href=row.url, target="_blank", rel="noopener", title=full
+            )
+        else:
+            text = html.Span(shown, title=full)
         rows.append(
             html.Tr(
                 [
-                    html.Td(stamp.strftime("%H:%M:%S"), className="time"),
+                    html.Td(_format_stamp(row.ts_ms), className="time"),
                     html.Td(row.source, className="src"),
                     html.Td(text),
                     html.Td(f"{row.sentiment:+.2f}", className="num"),
@@ -420,7 +450,7 @@ def create_app(db_path: Path | str = settings.DB_PATH) -> Dash:
             conn, term, sources or None, settings.LIVE_WINDOW_POSTS
         )
         stats = analytics.summary(posts)
-        label = f'"{term}"' if term else "all posts"
+        label = _label(term)
         mean = stats["mean"]
         rate = stats["per_minute"]
         tiles = [
@@ -458,7 +488,7 @@ def create_app(db_path: Path | str = settings.DB_PATH) -> Dash:
         posts = storage.fetch_posts(
             conn, term, sources or None, settings.HISTORY_WINDOW_POSTS
         )
-        label = f'"{term}"' if term else "all posts"
+        label = _label(term)
         figure = sentiment_volume_figure(
             posts, f"Longer-term sentiment for {label}", bins=400
         )
@@ -480,13 +510,12 @@ def create_app(db_path: Path | str = settings.DB_PATH) -> Dash:
         Output("status", "children"),
         Output("sources", "options"),
         Input("history-tick", "n_intervals"),
-        Input("live-tick", "n_intervals"),
     )
-    def update_global(_history_tick: int, _live_tick: int) -> tuple:
+    def update_global(_tick: int) -> tuple:
+        # Runs on the slow tick only: these are whole-table aggregates and
+        # would be wasteful (and were previously discarded) every 2 s.
         trending, _updated = storage.get_meta(conn, "trending", {})
         options = [{"label": s, "value": s} for s in storage.list_sources(conn)]
-        if ctx.triggered_id == "live-tick":
-            return no_update, _status_line(conn), no_update
         return term_chips(trending or {}, "trending"), _status_line(conn), options
 
     @app.callback(

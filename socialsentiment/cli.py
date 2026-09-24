@@ -12,17 +12,36 @@ from pathlib import Path
 from socialsentiment import __version__, settings, storage
 from socialsentiment.collectors import available_sources
 
+log = logging.getLogger(__name__)
+
 
 def _configure_logging(verbose: bool, log_path: Path | None) -> None:
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
+    warning = None
     if log_path is not None:
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        handlers.append(logging.FileHandler(log_path, encoding="utf-8"))
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            handlers.append(logging.FileHandler(log_path, encoding="utf-8"))
+        except OSError as exc:
+            warning = f"cannot write log file {log_path}: {exc}"
     logging.basicConfig(
         level=logging.DEBUG if verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         handlers=handlers,
     )
+    if warning:
+        log.warning("%s; logging to stderr only", warning)
+
+
+def _require_existing_db(path: Path) -> bool:
+    if path.exists():
+        return True
+    print(f"error: database not found: {path}", file=sys.stderr)
+    print(
+        "hint: run `seed` or `collect` first, or pass the right --db path",
+        file=sys.stderr,
+    )
+    return False
 
 
 def cmd_collect(args: argparse.Namespace) -> int:
@@ -31,13 +50,17 @@ def cmd_collect(args: argparse.Namespace) -> int:
     options = {}
     if args.rate is not None:
         options["synthetic"] = {"rate_per_second": args.rate}
-    run(
-        args.source,
-        db_path=args.db,
-        terms=args.term if args.term is not None else settings.TRACK_TERMS,
-        langs=args.lang if args.lang is not None else settings.LANGS,
-        collector_options=options,
-    )
+    try:
+        run(
+            args.source,
+            db_path=args.db,
+            terms=args.term if args.term is not None else settings.TRACK_TERMS,
+            langs=args.lang if args.lang is not None else settings.LANGS,
+            collector_options=options,
+        )
+    except RuntimeError as exc:
+        log.error("%s", exc)
+        return 1
     return 0
 
 
@@ -51,6 +74,7 @@ def cmd_dashboard(args: argparse.Namespace) -> int:
 
 def cmd_seed(args: argparse.Namespace) -> int:
     from socialsentiment.collectors.synthetic import generate_posts
+    from socialsentiment.runner import refresh_trending
 
     conn = storage.connect(args.db)
     storage.init_schema(conn)
@@ -63,9 +87,9 @@ def cmd_seed(args: argparse.Namespace) -> int:
         rng=random.Random(args.seed),
     )
     inserted = storage.insert_posts(conn, posts)
-    from socialsentiment.runner import refresh_trending
-
-    refresh_trending(conn, settings.TRENDING_SAMPLE_SIZE, settings.TRENDING_TOP_N)
+    refresh_trending(
+        conn, settings.TRENDING_SAMPLE_SIZE, settings.TRENDING_TOP_N
+    )
     conn.close()
     print(f"seeded {inserted} synthetic posts into {args.db}")
     return 0
@@ -74,17 +98,23 @@ def cmd_seed(args: argparse.Namespace) -> int:
 def cmd_truncate(args: argparse.Namespace) -> int:
     from socialsentiment.runner import purge_expired
 
+    if not _require_existing_db(args.db):
+        return 1
     conn = storage.connect(args.db)
     storage.init_schema(conn)
     deleted = purge_expired(conn, args.days)
     remaining = storage.count_posts(conn)
     conn.close()
-    print(f"deleted {deleted} posts older than {args.days} day(s); "
-          f"{remaining} remain")
+    print(
+        f"deleted {deleted} posts older than {args.days} day(s); "
+        f"{remaining} remain"
+    )
     return 0
 
 
 def cmd_stats(args: argparse.Namespace) -> int:
+    if not _require_existing_db(args.db):
+        return 1
     conn = storage.connect(args.db)
     storage.init_schema(conn)
     total = storage.count_posts(conn)
@@ -96,13 +126,42 @@ def cmd_stats(args: argparse.Namespace) -> int:
         print(f"latest:   {stamp.isoformat(timespec='seconds')}")
     for source, count in sorted(storage.source_counts(conn).items()):
         print(f"  {source:<10} {count}")
-    trending, updated = storage.get_meta(conn, "trending", {})
+    trending, _updated = storage.get_meta(conn, "trending", {})
     if trending:
         print("trending:")
         for term, (mean, count) in trending.items():
             print(f"  {term:<20} n={count:<6} sentiment={mean:+.3f}")
     conn.close()
     return 0
+
+
+def _add_common_options(parser: argparse.ArgumentParser, root: bool) -> None:
+    """Options accepted both before and after the sub-command.
+
+    The root parser carries the real defaults; the sub-parsers use
+    ``SUPPRESS`` so that a value given before the sub-command is not
+    overwritten by a sub-parser default.
+    """
+    suppress = argparse.SUPPRESS
+    parser.add_argument(
+        "--db",
+        type=Path,
+        default=settings.DB_PATH if root else suppress,
+        help=f"SQLite database path (default: {settings.DB_PATH})",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=False if root else suppress,
+        help="debug logging",
+    )
+    parser.add_argument(
+        "--no-log-file",
+        action="store_true",
+        default=False if root else suppress,
+        help=f"do not also write logs to {settings.LOG_PATH}",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -113,24 +172,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--version", action="version", version=f"%(prog)s {__version__}"
     )
-    parser.add_argument(
-        "--db",
-        type=Path,
-        default=settings.DB_PATH,
-        help=f"SQLite database path (default: {settings.DB_PATH})",
-    )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="debug logging"
-    )
-    parser.add_argument(
-        "--no-log-file",
-        action="store_true",
-        help=f"do not also write logs to {settings.LOG_PATH}",
-    )
+    _add_common_options(parser, root=True)
+    common = argparse.ArgumentParser(add_help=False)
+    _add_common_options(common, root=False)
     sub = parser.add_subparsers(dest="command", required=True)
 
     collect = sub.add_parser(
-        "collect", help="stream posts from one or more sources into the DB"
+        "collect",
+        parents=[common],
+        help="stream posts from one or more sources into the DB",
     )
     collect.add_argument(
         "--source",
@@ -157,7 +207,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     collect.set_defaults(func=cmd_collect)
 
-    dashboard = sub.add_parser("dashboard", help="run the Dash web app")
+    dashboard = sub.add_parser(
+        "dashboard", parents=[common], help="run the Dash web app"
+    )
     dashboard.add_argument("--host", default=settings.DASH_HOST)
     dashboard.add_argument("--port", type=int, default=settings.DASH_PORT)
     dashboard.add_argument(
@@ -166,7 +218,9 @@ def build_parser() -> argparse.ArgumentParser:
     dashboard.set_defaults(func=cmd_dashboard)
 
     seed = sub.add_parser(
-        "seed", help="fill the DB with synthetic posts for an offline demo"
+        "seed",
+        parents=[common],
+        help="fill the DB with synthetic posts for an offline demo",
     )
     seed.add_argument("--posts", type=int, default=5000)
     seed.add_argument("--hours", type=float, default=6.0)
@@ -174,14 +228,18 @@ def build_parser() -> argparse.ArgumentParser:
     seed.set_defaults(func=cmd_seed)
 
     truncate = sub.add_parser(
-        "truncate", help="delete posts older than the retention window"
+        "truncate",
+        parents=[common],
+        help="delete posts older than the retention window",
     )
     truncate.add_argument(
         "--days", type=int, default=settings.RETENTION_DAYS
     )
     truncate.set_defaults(func=cmd_truncate)
 
-    stats = sub.add_parser("stats", help="print database statistics")
+    stats = sub.add_parser(
+        "stats", parents=[common], help="print database statistics"
+    )
     stats.set_defaults(func=cmd_stats)
     return parser
 

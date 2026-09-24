@@ -91,7 +91,38 @@ def now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def connect(db_path: Path | str) -> sqlite3.Connection:
+def _enable_wal(conn: sqlite3.Connection, retry_seconds: float) -> None:
+    """Switch the connection to WAL, retrying on SQLITE_BUSY.
+
+    The busy timeout does not cover the journal-mode switch on a brand-new
+    database file, so two connections opening the same fresh file at the
+    same moment can see "database is locked" here.  Retry briefly instead
+    of failing the caller.
+    """
+    deadline = time.monotonic() + retry_seconds
+    while True:
+        try:
+            mode = str(conn.execute("PRAGMA journal_mode=WAL").fetchone()[0])
+        except sqlite3.OperationalError as exc:
+            message = str(exc).lower()
+            if "locked" not in message and "busy" not in message:
+                raise
+            if time.monotonic() > deadline:
+                raise
+            time.sleep(0.01)
+            continue
+        if mode.lower() in {"wal", "memory"}:
+            return
+        if time.monotonic() > deadline:
+            raise sqlite3.OperationalError(
+                f"could not enable WAL (journal_mode={mode})"
+            )
+        time.sleep(0.01)
+
+
+def connect(
+    db_path: Path | str, *, wal_retry_seconds: float = 10.0
+) -> sqlite3.Connection:
     """Open (and create if needed) the database in WAL mode.
 
     ``isolation_level=None`` puts the connection in autocommit mode so that
@@ -103,8 +134,12 @@ def connect(db_path: Path | str) -> sqlite3.Connection:
     conn = sqlite3.connect(
         str(path), isolation_level=None, check_same_thread=False, timeout=30
     )
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")
+    try:
+        _enable_wal(conn, wal_retry_seconds)
+        conn.execute("PRAGMA synchronous=NORMAL")
+    except Exception:
+        conn.close()
+        raise
     return conn
 
 
@@ -165,9 +200,11 @@ def fetch_posts(
 ) -> pd.DataFrame:
     """Return the newest posts matching ``term`` (FTS5 prefix search).
 
-    The frame is ordered newest first with columns ``id, source,
-    source_id, ts_ms, author, lang, text, sentiment, url``.  An empty
-    ``term`` returns the newest posts regardless of content.
+    "Newest" means by post timestamp (``ts_ms``), not by insertion order,
+    so a feed that delivers day-old items cannot hijack the live window.
+    Columns: ``id, source, source_id, ts_ms, author, lang, text, sentiment,
+    url``.  An empty ``term`` returns the newest posts regardless of
+    content.
     """
     query = fts_query(term)
     clause, params = _source_filter(sources)
@@ -176,13 +213,13 @@ def fetch_posts(
             f"{_POST_SELECT} FROM posts_fts "
             "JOIN posts p ON p.id = posts_fts.rowid "
             f"WHERE posts_fts MATCH ?{clause} "
-            "ORDER BY posts_fts.rowid DESC LIMIT ?"
+            "ORDER BY p.ts_ms DESC, p.id DESC LIMIT ?"
         )
         params = [query, *params, int(limit)]
     else:
         sql = (
             f"{_POST_SELECT} FROM posts p WHERE 1 = 1{clause} "
-            "ORDER BY p.id DESC LIMIT ?"
+            "ORDER BY p.ts_ms DESC, p.id DESC LIMIT ?"
         )
         params = [*params, int(limit)]
     return pd.read_sql_query(sql, conn, params=params)
@@ -267,6 +304,10 @@ class BatchWriter(threading.Thread):
     Collectors call :meth:`submit` from any thread; rows are flushed every
     ``flush_seconds`` (or when ``max_batch`` items are waiting) in a single
     transaction, which keeps SQLite fast even at firehose rates.
+
+    If the database cannot be opened the thread records the exception in
+    :attr:`failed` and exits; :meth:`submit` then drops posts instead of
+    queueing them forever, and callers should check :meth:`is_alive`.
     """
 
     def __init__(
@@ -283,8 +324,13 @@ class BatchWriter(threading.Thread):
         self._stop_event = threading.Event()
         self.received = 0
         self.inserted = 0
+        self.dropped = 0
+        self.failed: BaseException | None = None
 
     def submit(self, post: Post) -> None:
+        if self.failed is not None:
+            self.dropped += 1
+            return
         self._queue.put(post)
         self.received += 1
 
@@ -293,8 +339,13 @@ class BatchWriter(threading.Thread):
         return self._queue.qsize()
 
     def run(self) -> None:
-        conn = connect(self.db_path)
-        init_schema(conn)
+        try:
+            conn = connect(self.db_path)
+            init_schema(conn)
+        except Exception as exc:
+            self.failed = exc
+            log.exception("batch writer could not open %s", self.db_path)
+            return
         try:
             while not (self._stop_event.is_set() and self._queue.empty()):
                 batch = self._drain()
@@ -302,7 +353,8 @@ class BatchWriter(threading.Thread):
                     continue
                 try:
                     self.inserted += insert_posts(conn, batch)
-                except sqlite3.Error:
+                except Exception:
+                    self.dropped += len(batch)
                     log.exception(
                         "insert failed; dropping %d posts", len(batch)
                     )

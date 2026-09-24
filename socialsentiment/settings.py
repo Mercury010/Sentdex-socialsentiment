@@ -17,9 +17,14 @@ from dotenv import load_dotenv
 # Directories
 # ---------------------------------------------------------------------------
 PROJECT_DIR = Path(__file__).resolve().parent.parent
+# A .env in the working directory wins (works for installed packages too);
+# the checkout root is read as a fallback.  Existing variables are never
+# overridden by either file.
+load_dotenv(Path.cwd() / ".env")
 load_dotenv(PROJECT_DIR / ".env")
 
-DATA_DIR = Path(os.environ.get("SS_DATA_DIR", PROJECT_DIR / "data"))
+# Data lives next to where you run the tool, not inside site-packages.
+DATA_DIR = Path(os.environ.get("SS_DATA_DIR") or Path.cwd() / "data")
 
 # ---------------------------------------------------------------------------
 # File names (deliberately separate from the directories above)
@@ -41,18 +46,22 @@ def _env_list(name: str, default: str = "") -> list[str]:
 
 
 def _env_int(name: str, default: int) -> int:
-    return int(os.environ.get(name, default))
+    """Integer variable; a missing or blank value means ``default``."""
+    raw = os.environ.get(name, "").strip()
+    return default if raw == "" else int(raw)
 
 
 def _env_float(name: str, default: float) -> float:
-    return float(os.environ.get(name, default))
+    """Float variable; a missing or blank value means ``default``."""
+    raw = os.environ.get(name, "").strip()
+    return default if raw == "" else float(raw)
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
+    raw = os.environ.get(name, "").strip().lower()
+    if raw == "":
         return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return raw in {"1", "true", "yes", "on"}
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +74,9 @@ TRACK_TERMS = _env_list("SS_TRACK_TERMS")
 # means keep all languages.  Posts without a language tag are always kept.
 LANGS = _env_list("SS_LANGS", "en")
 RETENTION_DAYS = _env_int("SS_RETENTION_DAYS", 3)
+# Posts stamped further in the future than this are treated as clock skew
+# and dropped at ingest; posts older than RETENTION_DAYS are dropped too.
+MAX_FUTURE_SKEW_SECONDS = _env_int("SS_MAX_FUTURE_SKEW_SECONDS", 300)
 WRITE_FLUSH_SECONDS = _env_float("SS_WRITE_FLUSH_SECONDS", 1.0)
 TRENDING_INTERVAL_SECONDS = _env_int("SS_TRENDING_INTERVAL_SECONDS", 30)
 TRENDING_SAMPLE_SIZE = _env_int("SS_TRENDING_SAMPLE_SIZE", 5000)
@@ -117,12 +129,16 @@ RSS_GOOGLE_NEWS_TEMPLATE = os.environ.get(
     "https://news.google.com/rss/search?q={term}&hl=en-US&gl=US&ceid=US:en",
 )
 RSS_POLL_SECONDS = _env_int("SS_RSS_POLL_SECONDS", 300)
+RSS_FETCH_TIMEOUT_SECONDS = _env_float("SS_RSS_FETCH_TIMEOUT_SECONDS", 30.0)
 RSS_USER_AGENT = os.environ.get("SS_RSS_USER_AGENT", "socialsentiment/2.0")
 
 # ---------------------------------------------------------------------------
 # X / Twitter API v2 (filtered stream; requires a paid access tier)
 # ---------------------------------------------------------------------------
 X_BEARER_TOKEN = os.environ.get("SS_X_BEARER_TOKEN", "")
+# Maximum length of one stream rule (512 on Basic, 1024 on Pro at the time
+# of writing; check the current X developer docs).
+X_RULE_MAX_LENGTH = _env_int("SS_X_RULE_MAX_LENGTH", 512)
 
 # ---------------------------------------------------------------------------
 # Synthetic source (offline demo / testing)

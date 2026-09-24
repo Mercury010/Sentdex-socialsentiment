@@ -5,6 +5,7 @@ from __future__ import annotations
 import calendar
 import logging
 import threading
+import urllib.request
 from collections.abc import Sequence
 from typing import Any
 from urllib.parse import quote_plus
@@ -16,6 +17,11 @@ from socialsentiment.storage import now_ms
 from socialsentiment.text import strip_html
 
 log = logging.getLogger(__name__)
+
+ACCEPT_HEADER = (
+    "application/rss+xml, application/atom+xml, application/xml;q=0.9, "
+    "text/xml;q=0.9, */*;q=0.8"
+)
 
 
 def _entry_ts_ms(entry: Any, fallback_ms: int) -> int:
@@ -66,6 +72,7 @@ class RssCollector(Collector):
         feeds: Sequence[str] = tuple(settings.RSS_FEEDS),
         poll_seconds: int = settings.RSS_POLL_SECONDS,
         user_agent: str = settings.RSS_USER_AGENT,
+        fetch_timeout: float = settings.RSS_FETCH_TIMEOUT_SECONDS,
         add_google_news: bool = True,
         **kwargs: Any,
     ) -> None:
@@ -77,14 +84,47 @@ class RssCollector(Collector):
             raise ValueError("rss: no feeds configured")
         self.poll_seconds = poll_seconds
         self.user_agent = user_agent
+        self.fetch_timeout = fetch_timeout
 
-    def poll(self) -> int:
-        """Fetch every feed once; return the number of emitted posts."""
+    def _fetch(self, url: str) -> Any:
+        """Download and parse one feed with a bounded socket timeout.
+
+        ``feedparser.parse(url)`` has no timeout, so a host that accepts the
+        connection and never answers would block the poll loop forever.
+        """
         import feedparser
 
+        if url.startswith(("http://", "https://")):
+            request = urllib.request.Request(
+                url,
+                headers={"User-Agent": self.user_agent, "Accept": ACCEPT_HEADER},
+            )
+            with urllib.request.urlopen(
+                request, timeout=self.fetch_timeout
+            ) as response:
+                data = response.read()
+                headers = dict(response.headers.items())
+            return feedparser.parse(data, response_headers=headers)
+        return feedparser.parse(url, agent=self.user_agent)
+
+    def poll(self) -> int:
+        """Fetch every feed once; return the number of emitted posts.
+
+        A feed that fails (network error, timeout, unparseable body) is
+        logged and skipped so the others keep their cadence.
+        """
         emitted = 0
         for url in self.feeds:
-            parsed = feedparser.parse(url, agent=self.user_agent)
+            try:
+                parsed = self._fetch(url)
+            except Exception as exc:
+                log.warning(
+                    "rss: %s fetch failed (%s: %s)",
+                    url,
+                    type(exc).__name__,
+                    exc,
+                )
+                continue
             if parsed.get("bozo") and not parsed.entries:
                 log.warning(
                     "rss: %s could not be parsed (%s)",

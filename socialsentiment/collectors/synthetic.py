@@ -70,6 +70,39 @@ AUTHORS: tuple[str, ...] = (
     "fomo_fred",
     "risk_off_rita",
 )
+# Number of live posts over which the sentiment mix completes one drift
+# cycle (bearish -> bullish -> bearish).
+LIVE_CYCLE_POSTS = 600
+
+
+def make_post(
+    rng: random.Random,
+    *,
+    ts_ms: int,
+    source_id: str,
+    phase: float,
+    topics: Sequence[str] = TOPICS,
+) -> Post:
+    """One synthetic post; ``phase`` in [0, 1) steers the sentiment mix."""
+    swing = 1.0 if phase > 0.5 else -1.0
+    positive_bias = 0.35 + 0.3 * rng.random() * swing
+    roll = rng.random()
+    if roll < positive_bias:
+        template = rng.choice(POSITIVE_TEMPLATES)
+    elif roll < positive_bias + 0.3:
+        template = rng.choice(NEGATIVE_TEMPLATES)
+    else:
+        template = rng.choice(NEUTRAL_TEMPLATES)
+    topic = rng.choice(topics)
+    text = template.format(topic=topic, tag=TAGS.get(topic, "")).strip()
+    return Post(
+        source="synthetic",
+        source_id=source_id,
+        ts_ms=ts_ms,
+        text=text,
+        author=rng.choice(AUTHORS),
+        lang="en",
+    )
 
 
 def generate_posts(
@@ -82,31 +115,19 @@ def generate_posts(
 ) -> Iterator[Post]:
     """Yield ``count`` posts with timestamps spread over ``[start, end]``.
 
-    Sentiment mix drifts slowly over the window so the charts show a
-    trend rather than white noise.
+    The sentiment mix drifts over the window so the charts show a trend
+    rather than white noise.
     """
     rng = rng or random.Random()
     span = max(end_ms - start_ms, 1)
     for index in range(count):
         ts_ms = start_ms + int(span * index / max(count, 1))
-        phase = index / max(count, 1)
-        positive_bias = 0.35 + 0.3 * rng.random() * (1 if phase > 0.5 else -1)
-        roll = rng.random()
-        if roll < positive_bias:
-            template = rng.choice(POSITIVE_TEMPLATES)
-        elif roll < positive_bias + 0.3:
-            template = rng.choice(NEGATIVE_TEMPLATES)
-        else:
-            template = rng.choice(NEUTRAL_TEMPLATES)
-        topic = rng.choice(topics)
-        text = template.format(topic=topic, tag=TAGS.get(topic, ""))
-        yield Post(
-            source="synthetic",
-            source_id=f"{ts_ms}-{index}-{rng.randrange(1_000_000)}",
+        yield make_post(
+            rng,
             ts_ms=ts_ms,
-            text=text.strip(),
-            author=rng.choice(AUTHORS),
-            lang="en",
+            source_id=f"{ts_ms}-{index}-{rng.randrange(1_000_000)}",
+            phase=index / max(count, 1),
+            topics=topics,
         )
 
 
@@ -124,26 +145,20 @@ class SyntheticCollector(Collector):
         super().__init__(sink, **kwargs)
         self.rate_per_second = max(rate_per_second, 0.01)
         self._rng = random.Random(seed)
+        self._counter = 0
 
     def run_once(self, stop_event: threading.Event) -> None:
         interval = 1.0 / self.rate_per_second
-        counter = 0
         while not stop_event.is_set():
             stamp = now_ms()
-            post = next(
-                generate_posts(
-                    1, start_ms=stamp, end_ms=stamp, rng=self._rng
-                )
-            )
-            counter += 1
+            self._counter += 1
+            phase = (self._counter % LIVE_CYCLE_POSTS) / LIVE_CYCLE_POSTS
             self.emit(
-                Post(
-                    source=post.source,
-                    source_id=f"{stamp}-{counter}",
+                make_post(
+                    self._rng,
                     ts_ms=stamp,
-                    text=post.text,
-                    author=post.author,
-                    lang=post.lang,
+                    source_id=f"{stamp}-{self._counter}",
+                    phase=phase,
                 )
             )
             if stop_event.wait(interval):

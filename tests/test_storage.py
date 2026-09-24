@@ -1,5 +1,6 @@
 import random
 import sqlite3
+import threading
 import time
 
 from socialsentiment import storage
@@ -87,3 +88,54 @@ def test_bulk_insert_is_fast(conn):
     started = time.perf_counter()
     assert storage.insert_posts(conn, posts) == 3000
     assert time.perf_counter() - started < 5.0
+
+
+def test_fetch_orders_by_timestamp_not_insertion(conn):
+    storage.insert_posts(conn, [_post(1, "bitcoin now", ts=1_000_000),
+                                _post(2, "bitcoin later", ts=2_000_000)])
+    # a stale feed item inserted last must not become the "newest" post
+    storage.insert_posts(conn, [_post(3, "bitcoin stale", ts=500)])
+    assert list(storage.fetch_posts(conn, "bitcoin")["source_id"]) == ["2", "1", "3"]
+    assert list(storage.fetch_posts(conn, "")["source_id"]) == ["2", "1", "3"]
+
+
+def test_concurrent_connect_on_fresh_database(tmp_path):
+    errors = []
+
+    def open_db(path):
+        try:
+            c = storage.connect(path)
+            storage.init_schema(c)
+            c.close()
+        except Exception as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    for trial in range(40):
+        path = tmp_path / f"fresh{trial}.db"
+        threads = [threading.Thread(target=open_db, args=(path,)) for _ in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    assert errors == []
+
+
+def test_batch_writer_records_open_failure(tmp_path):
+    blocker = tmp_path / "file"
+    blocker.write_text("not a directory")
+    writer = storage.BatchWriter(blocker / "x.db", flush_seconds=0.05)
+    writer.start()
+    writer.join(5)
+    assert not writer.is_alive() and writer.failed is not None
+    writer.submit(_post(1))
+    assert writer.dropped == 1 and writer.received == 0
+
+
+def test_batch_writer_drops_bad_batch_and_keeps_going(db_path):
+    writer = storage.BatchWriter(db_path, flush_seconds=0.05)
+    writer.start()
+    writer.submit(Post(source="t", source_id="bad", ts_ms=None, text="x"))
+    time.sleep(0.3)
+    writer.submit(_post(2))
+    writer.stop()
+    assert writer.inserted == 1 and writer.dropped == 1

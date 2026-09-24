@@ -21,47 +21,73 @@ from socialsentiment.models import Post
 log = logging.getLogger(__name__)
 
 POST_COLLECTION = "app.bsky.feed.post"
+# ``createdAt`` is written by the client and can be wrong by years.  Trust
+# it only when it is close to the server-side arrival time (``time_us``).
+MAX_CREATED_PAST_MS = 7 * 86_400_000
+MAX_CREATED_FUTURE_MS = 5 * 60_000
 
 
 def _iso_to_ms(value: str) -> int | None:
     try:
         stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
+        return int(stamp.timestamp() * 1000)
+    except (ValueError, OverflowError, OSError, AttributeError, TypeError):
         return None
-    return int(stamp.timestamp() * 1000)
+
+
+def choose_timestamp(created_ms: int | None, arrival_ms: int) -> int:
+    """Prefer the client's ``createdAt`` only when it is plausible."""
+    if created_ms is None:
+        return arrival_ms
+    if not arrival_ms:
+        return created_ms
+    if created_ms > arrival_ms + MAX_CREATED_FUTURE_MS:
+        return arrival_ms
+    if created_ms < arrival_ms - MAX_CREATED_PAST_MS:
+        return arrival_ms
+    return created_ms
 
 
 def parse_event(raw: str | bytes | dict[str, Any]) -> Post | None:
     """Turn one Jetstream message into a :class:`Post`, or ``None``.
 
     Only ``commit`` events that create a post are of interest; account and
-    identity events, deletes and likes are skipped.
+    identity events, deletes and likes are skipped.  Malformed records
+    (Jetstream relays them as written) yield ``None`` rather than raising.
     """
     event = raw if isinstance(raw, dict) else json.loads(raw)
-    if event.get("kind") != "commit":
+    if not isinstance(event, dict) or event.get("kind") != "commit":
         return None
-    commit = event.get("commit") or {}
+    commit = event.get("commit")
+    if not isinstance(commit, dict):
+        return None
     if commit.get("operation") != "create":
         return None
     if commit.get("collection") != POST_COLLECTION:
         return None
-    record = commit.get("record") or {}
-    text = str(record.get("text") or "").strip()
-    if not text:
+    record = commit.get("record")
+    if not isinstance(record, dict):
+        return None
+    text = record.get("text")
+    if not isinstance(text, str) or not text.strip():
         return None
 
     did = str(event.get("did") or "")
     rkey = str(commit.get("rkey") or "")
-    ts_ms = _iso_to_ms(str(record.get("createdAt") or ""))
-    if ts_ms is None:
-        ts_ms = int(event.get("time_us", 0)) // 1000
-    langs = record.get("langs") or []
-    lang = str(langs[0]) if langs else ""
+    try:
+        arrival_ms = int(event.get("time_us") or 0) // 1000
+    except (TypeError, ValueError):
+        arrival_ms = 0
+    created_ms = _iso_to_ms(str(record.get("createdAt") or ""))
+    langs = record.get("langs")
+    lang = ""
+    if isinstance(langs, list) and langs and isinstance(langs[0], str):
+        lang = langs[0]
     return Post(
         source="bluesky",
         source_id=f"{did}/{rkey}",
-        ts_ms=ts_ms,
-        text=text,
+        ts_ms=choose_timestamp(created_ms, arrival_ms),
+        text=text.strip(),
         author=did,
         lang=lang,
         url=f"https://bsky.app/profile/{did}/post/{rkey}",
@@ -97,7 +123,8 @@ class BlueskyCollector(Collector):
                     continue
                 try:
                     post = parse_event(raw)
-                except (ValueError, TypeError):
+                except Exception:
+                    # One malformed message must not drop the firehose.
                     log.debug("bluesky: unparseable message skipped")
                     continue
                 if post is not None:

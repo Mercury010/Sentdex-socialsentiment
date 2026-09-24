@@ -1,4 +1,7 @@
+import signal
 import threading
+
+import pytest
 
 from socialsentiment import storage
 from socialsentiment.runner import purge_expired, refresh_trending, run
@@ -21,3 +24,20 @@ def test_refresh_trending_and_purge(seeded):
     trending, _ = storage.get_meta(seeded, "trending")
     assert len(trending) <= 5
     assert purge_expired(seeded, retention_days=0) == 600
+
+
+def test_run_raises_when_writer_cannot_open(tmp_path):
+    blocker = tmp_path / "file"
+    blocker.write_text("not a directory")
+    with pytest.raises(Exception):
+        run(["synthetic"], db_path=blocker / "x.db", stop_event=threading.Event(),
+            status_interval=0.5)
+
+
+def test_run_restores_signal_handlers(db_path):
+    before = signal.getsignal(signal.SIGINT)
+    stop = threading.Event()
+    threading.Timer(0.5, stop.set).start()
+    run(["synthetic"], db_path=db_path, stop_event=stop, status_interval=0.2,
+        collector_options={"synthetic": {"rate_per_second": 50}})
+    assert signal.getsignal(signal.SIGINT) is before

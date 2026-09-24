@@ -46,15 +46,21 @@ HTML_TAG_RE = re.compile(r"<[^>]+>")
 WHITESPACE_RE = re.compile(r"\s+")
 CASHTAG_RE = re.compile(r"\$([A-Za-z]{1,6})(?![A-Za-z0-9])")
 HASHTAG_RE = re.compile(r"#([^\W\d_]\w{1,})")
-# A word starts with a letter and may contain inner apostrophes or hyphens.
-WORD_RE = re.compile(r"[^\W\d_](?:[^\W_]|['’-](?=[^\W_]))*")
+# A word starts with a letter and may contain inner hyphens.  Apostrophes
+# split the word so contractions fall apart into stop-word fragments
+# ("don't" -> "don", "t") instead of surviving as content words.
+WORD_RE = re.compile(r"[^\W\d_](?:[^\W_]|-(?=[^\W_]))*")
 _FTS_TOKEN_RE = re.compile(r"\w+")
 _SENTENCE_END = frozenset(".!?:;\n")
 
 
 def strip_html(text: str) -> str:
-    """Unescape entities, drop tags and collapse whitespace."""
-    cleaned = HTML_TAG_RE.sub(" ", html.unescape(text or ""))
+    """Drop tags, then unescape entities, then collapse whitespace.
+
+    Tags are removed before unescaping so that escaped literal brackets
+    (``&lt;5%&gt;``) survive as text instead of being mistaken for tags.
+    """
+    cleaned = html.unescape(HTML_TAG_RE.sub(" ", text or ""))
     return WHITESPACE_RE.sub(" ", cleaned).strip()
 
 

@@ -22,6 +22,10 @@ class Collector(abc.ABC):
     Subclasses implement :meth:`run_once`, which should block until the
     connection drops or ``stop_event`` is set.  :meth:`run` wraps it in a
     reconnect loop with exponential back-off.
+
+    ``max_age_ms`` / ``max_future_ms`` (both optional) drop posts whose
+    timestamp is implausibly old or in the future, so a stale feed item or
+    a client with a broken clock cannot distort the live window.
     """
 
     name: str = "base"
@@ -32,23 +36,37 @@ class Collector(abc.ABC):
         *,
         terms: Sequence[str] = (),
         langs: Sequence[str] = (),
+        max_age_ms: int | None = None,
+        max_future_ms: int | None = None,
         max_backoff: float = 60.0,
     ) -> None:
         self._sink = sink
         self.terms = [term.lower() for term in terms if term]
         self.langs = {lang.lower() for lang in langs if lang}
+        self.max_age_ms = max_age_ms
+        self.max_future_ms = max_future_ms
         self.max_backoff = max_backoff
         self.emitted = 0
         self.dropped = 0
 
     def accept(self, post: Post) -> bool:
-        """Apply the language and term filters."""
+        """Apply the language, term and timestamp filters."""
         if self.langs and post.lang:
             primary = post.lang.split("-")[0].lower()
             if primary not in self.langs:
                 return False
         if self.terms and not contains_any(post.text, self.terms):
             return False
+        if self.max_age_ms is not None or self.max_future_ms is not None:
+            now_ms = int(time.time() * 1000)
+            if self.max_age_ms is not None and (
+                post.ts_ms < now_ms - self.max_age_ms
+            ):
+                return False
+            if self.max_future_ms is not None and (
+                post.ts_ms > now_ms + self.max_future_ms
+            ):
+                return False
         return True
 
     def emit(self, post: Post) -> bool:
