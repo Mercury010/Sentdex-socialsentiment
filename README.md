@@ -146,7 +146,7 @@ pytest                      # unit + HTTP-level dashboard tests
 ```
 
 The same two commands run in GitHub Actions on every push and pull request
-(Python 3.10, 3.11 and 3.12; see `.github/workflows/ci.yml`).
+(Python 3.10 through 3.14; see `.github/workflows/ci.yml`).
 
 Layout:
 
