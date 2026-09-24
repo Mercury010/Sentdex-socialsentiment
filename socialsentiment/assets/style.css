@@ -1,0 +1,103 @@
+/* Dark-only dashboard theme.  Tokens follow the data-viz reference palette. */
+:root {
+  --page: #0d0d0d;
+  --surface: #1a1a19;
+  --border: rgba(255, 255, 255, 0.10);
+  --ink: #ffffff;
+  --ink-2: #c3c2b7;
+  --muted: #898781;
+  --grid: #2c2c2a;
+  --positive: #3987e5;
+  --negative: #e66767;
+  --neutral: #4d4d4a;
+  --accent: #3987e5;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.page { max-width: 1400px; margin: 0 auto; padding: 16px; }
+
+.header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px; }
+.header h1 { font-size: 22px; font-weight: 600; margin: 0; }
+.status { color: var(--muted); font-size: 13px; }
+
+.filters {
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+  margin: 16px 0;
+}
+.filters label { display: block; color: var(--ink-2); font-size: 12px; margin-bottom: 4px; }
+.filters .field { min-width: 220px; flex: 1 1 220px; }
+
+.term-input {
+  width: 100%; padding: 8px 10px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--ink);
+  font: inherit;
+}
+.term-input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* Dash 4 dcc design tokens (dcc.Dropdown etc.) mapped onto the dark palette.
+   dcc injects its own :root block before this stylesheet, so these win. */
+:root {
+  --Dash-Fill-Inverse-Strong: var(--surface);
+  --Dash-Text-Strong: var(--ink);
+  --Dash-Text-Primary: var(--ink);
+  --Dash-Text-Weak: var(--ink-2);
+  --Dash-Text-Disabled: var(--muted);
+  --Dash-Stroke-Strong: var(--border);
+  --Dash-Fill-Primary-Hover: var(--grid);
+  --Dash-Fill-Primary-Active: var(--grid);
+  --Dash-Fill-Disabled: var(--grid);
+  --Dash-Fill-Interactive-Strong: var(--accent);
+}
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.tile {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px 14px;
+}
+.tile-label { color: var(--muted); font-size: 12px; }
+.tile-value { font-size: 28px; font-weight: 600; margin-top: 2px; }
+.tile-sub { color: var(--ink-2); font-size: 12px; }
+
+.grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 12px; }
+@media (min-width: 900px) { .grid.two { grid-template-columns: 1fr 1fr; } }
+
+.card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px;
+}
+.card h2 { font-size: 14px; font-weight: 600; color: var(--ink-2); margin: 0 0 8px 0; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border);
+  background: transparent; color: var(--ink); font: inherit; cursor: pointer;
+}
+.chip:hover { background: var(--grid); }
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.chip .count { color: var(--muted); font-size: 0.85em; }
+.empty { color: var(--muted); font-style: italic; }
+
+.posts { width: 100%; border-collapse: collapse; font-size: 13px; }
+.posts th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--grid); }
+.posts td { padding: 6px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; overflow-wrap: anywhere; }
+.posts td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.posts td.time { white-space: nowrap; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.posts td.src { color: var(--muted); white-space: nowrap; }
+.posts tr.pos td.num { color: var(--positive); }
+.posts tr.neg td.num { color: var(--negative); }
+.posts a { color: var(--ink); text-decoration: none; }
+.posts a:hover { text-decoration: underline; }
+
+.footer { color: var(--muted); font-size: 12px; margin: 16px 0; }

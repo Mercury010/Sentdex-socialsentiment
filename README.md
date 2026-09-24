@@ -1,50 +1,167 @@
-# Social Sentiment Dash Application
-Live-streaming sentiment analysis application created with Python and Dash, hosted at [**SocialSentiment.net**](http://socialsentiment.net/).
+# Social Sentiment 2.0
 
-![application example](https://pythonprogramming.net/static/images/dash/dashapplication.jpg)
+Live social-media and news sentiment for any search term, on a Dash
+dashboard, with SQLite full-text search underneath.
 
-## Dash Tutorials
-This application was created in conjunction with the [**Dash tutorial series**](https://pythonprogramming.net/data-visualization-application-dash-python-tutorial-introduction/).
+Originally a fork of Sentdex's 2018 [socialsentiment](https://github.com/Sentdex/socialsentiment)
+(Twitter v1.1 stream → VADER → Dash 0.x). That code no longer runs: the
+Twitter endpoint it used was shut down, and Tweepy 3 / Dash 0.x APIs were
+removed years ago. Version 2.0 is a rewrite that keeps the idea and replaces
+every moving part.
 
-## Repo Contents: 
-- `dash_mess.py` - This is currently the main front-end application code. Contains the dash application layouts, logic for graphs, interfaces with the database...etc. Name is descriptive of the overall state of code :) ...this code is setup to run on a flask instance. If you want to clone this and run it locally, you will be using the `dev_server.py`
-- `dev_server.py` - If you wish to run this application locally, on the dev server, run via this instead.
-- `twitter_stream.py` - This should run in the background of your application. This is what streams tweets from Twitter, storing them into the sqlite database, which is what the `dash_mess.py` file interfaces with. 
-- `config.py` - Meant for many configurations, but right now it just contains stop words. Words we don't intend to ever count in the "trending"
-- `cache.py` -  For caching purposes in effort to get things to run faster. 
-- `db-truncate.py` - A script to truncate the infinitely-growing sqlite database. You will get about 3.5 millionish tweets per day, depending on how fast you can process. You can keep these, but, as the database grows, search times will dramatically suffer. 
+## Σύνοψη (EL)
+
+Πολυ-πηγή live sentiment tracker: **Bluesky Jetstream** (δωρεάν, χωρίς
+credentials), **Reddit** (δωρεάν script app), **RSS/news** (δωρεάν),
+**X API v2** (μόνο με πληρωμένο tier) και **synthetic** πηγή για offline demo.
+VADER με λεξιλόγιο αγοράς (bullish/bearish/rugpull/liquidations κ.λπ.),
+SQLite FTS5 για αναζήτηση, Dash 4 dashboard με live/long-term γραφήματα,
+sentiment share, related και trending terms. Όλα τα paths και ονόματα
+αρχείων ορίζονται χωριστά στο `socialsentiment/settings.py` και
+παραμετροποιούνται με μεταβλητές `SS_*` (βλ. `.env.example`).
+
+## What it does
+
+```
+ sources ──► collectors ──► BatchWriter ──► SQLite (posts + FTS5) ◄── Dash app
+ bluesky      parse +        scores with        │
+ reddit       filter         VADER+finance      └── maintenance thread:
+ rss          (lang/term)    lexicon                 trending terms, retention purge
+ x
+ synthetic
+```
+
+* **Collectors** (`socialsentiment/collectors/`) normalise every source into a
+  `Post` (source, id, timestamp, text, author, lang, url). Parsing is pure and
+  unit-tested; I/O sits in a reconnect loop with exponential back-off.
+* **Storage** (`storage.py`): one writer thread batches inserts every second;
+  the dashboard reads concurrently thanks to WAL mode. `UNIQUE(source,
+  source_id)` de-duplicates re-polled RSS items. FTS5 prefix search, with user
+  input sanitised so FTS operators cannot be injected.
+* **Sentiment** (`sentiment.py`): VADER compound score plus a conservative
+  finance/crypto lexicon. Heuristic, not a trained model.
+* **Trending** (`trending.py`): tickers, cashtags, hashtags and proper-noun
+  candidates across the newest posts, with their mean sentiment. Computed in
+  memory (no TextBlob / NLTK downloads), cached as JSON in the `meta` table.
+* **Dashboard** (`dashboard.py`, Dash ≥ 3): live and longer-term panels
+  (sentiment line over a volume bar sharing one time axis; no dual-axis
+  charts), KPI tiles, a diverging positive/neutral/negative share bar (no pie),
+  clickable related and trending term chips, a recent-posts table with links,
+  and a source filter.
 
 ## Quick start
 
-- Clone repo
-- install `requirements.txt` using `pip install -r requirements.txt`
-- Fill in your Twitter App credentials to `twitter_stream.py`. Go to [**apps.twitter.com**](https://apps.twitter.com/) to set that up if you need to.
-- Run `twitter_stream.py` to build database
-- If you're using this locally, you can run the application with the `dev_server.py` script. If you want to deploy this to a webserver, see my [**deploying Dash application tutorial**](https://pythonprogramming.net/deploy-vps-dash-data-visualization/)
-- You might need the latest version of sqlite. 
-```
-sudo add-apt-repository ppa:jonathonf/backports
-sudo apt-get update && sudo apt-get install sqlite3
-```
-- Consider running the `db-truncate.py` from time to time (or via a cronjob), to keep the database reasonably sized. In its current state, the database really doesn't need to store more than 2-3 days of data most likely. 
-
-### Tips for Running on Server
-- You can use Gunicorn to run the server
-```
-gunicorn dash_mess:server -b 0.0.0.0:80 -w 4
+```bash
+git clone https://github.com/Mercury010/Sentdex-socialsentiment.git
+cd Sentdex-socialsentiment
+python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env                                   # optional; defaults work
 ```
 
+Offline demo (no network, no keys) in two terminals:
 
-## Todo
+```bash
+python -m socialsentiment seed --posts 5000 --hours 6   # backfill a demo DB
+python -m socialsentiment collect --source synthetic    # keep it flowing
+python -m socialsentiment dashboard                     # http://127.0.0.1:8050
+```
 
-Want to help contribute???
+Live sources:
 
-- Code is ugly. Low hanging fruit is just making the code not so ugly. Up to this point, I've just been in "make it work" mode.
-- App is ugly. I am not a designer. This app is prettttttyyyyyy gross. Think you have a better design? Halp. 
-- Click-able related terms and trending terms would be nice. I tried, but failed at this. It'd be cool to see a related term, and be able to just click on it, and this becomes the new searched term, for example.
-- The interactive search is cool, but also does a search in the database per-character. It would be nice if it didn't search per key-press. Not sure I want a search button, I like the streamlined interactivity, but maybe wait 0.2 seconds or something without any new keypresses to perform the search? Something like that might help with speeds. I really do not know the best option here, I just know this isn't idea.
-- Other manipulations or ideas for interactivity? Feel free to show them in a PR.
+```bash
+# Bluesky firehose (no credentials), English only, all topics:
+python -m socialsentiment collect --source bluesky
 
-## Credits
+# Bluesky + news feeds, only posts mentioning these terms:
+python -m socialsentiment collect --source bluesky --source rss \
+    --term bitcoin --term ethereum --term nvidia
 
-The speed of the application, especially with a database with 10's of millions of records is thanks entirely to [**Daniel Kukiela**](https://github.com/daniel-kukiela/) who helped us to convert from regular sqlite to using fts, helping with the queries, new database structure, caching, and more.
+# Reddit (set SS_REDDIT_CLIENT_ID / SS_REDDIT_CLIENT_SECRET in .env first):
+python -m socialsentiment collect --source reddit --source rss
+
+# X API v2 filtered stream (SS_X_BEARER_TOKEN; needs a tier that includes streaming):
+python -m socialsentiment collect --source x --term bitcoin
+```
+
+Other commands: `stats` (counts per source, trending), `truncate --days N`
+(retention purge; also runs hourly inside `collect`). `--db PATH` overrides
+the database location for any command and may go before or after the
+sub-command (`stats --db demo.db`); `-v` enables debug logging.
+
+## Configuration
+
+Everything lives in `socialsentiment/settings.py` and can be overridden with
+`SS_*` environment variables or a `.env` file (read from the working
+directory first, then from the checkout root). Directories and file names are
+separate settings (`SS_DATA_DIR`, `SS_DB_FILENAME`, `SS_LOG_FILENAME`), so a
+deployment can move data without touching code. By default data and logs go
+to `./data` under the directory you run from. See `.env.example` for the
+full list.
+
+Notable knobs:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SS_TRACK_TERMS` | *(empty)* | Keep only posts containing one of these terms. Empty keeps the full firehose. |
+| `SS_LANGS` | `en` | Keep only these languages when the source reports one. |
+| `SS_RETENTION_DAYS` | `3` | Posts older than this are purged. |
+| `SS_REDDIT_SUBREDDITS` | crypto + stocks subs | Comma separated. |
+| `SS_RSS_FEEDS` | CoinDesk, CoinTelegraph, CNBC finance | Plus one Google News search feed per tracked term. |
+| `SS_DEFAULT_TERM` | `bitcoin` | Initial dashboard search. |
+
+## Data sources: what is free in 2026
+
+| Source | Cost | Credentials | Notes |
+|---|---|---|---|
+| Bluesky Jetstream | free | none | Full public firehose over a websocket; filtering is client-side. |
+| Reddit | free | script app | Streams new comments and submissions from chosen subreddits. |
+| RSS / Google News | free | none | Polled every 5 min; headlines + summaries. |
+| X API v2 | paid | bearer token | Filtered stream is not in the free tier; check current X pricing. |
+| Synthetic | free | none | Deterministic demo chatter for testing. |
+
+Feed URLs and third-party API terms change; verify them on first run.
+
+## Development
+
+```bash
+pip install -e ".[dev]"
+flake8                      # PEP 8, 88-column lines (setup.cfg)
+pytest                      # unit + HTTP-level dashboard tests
+```
+
+Layout:
+
+```
+socialsentiment/
+  settings.py     paths, file names, all SS_* configuration
+  models.py       Post dataclass
+  sentiment.py    VADER + finance lexicon
+  text.py         tokenising, stop words, tags, FTS query builder
+  storage.py      SQLite schema, FTS5, BatchWriter, queries
+  trending.py     related / trending term statistics
+  analytics.py    resampling and summary numbers for the charts
+  collectors/     base, bluesky, reddit, rss, x_stream, synthetic
+  runner.py       collectors + writer + maintenance in one process
+  dashboard.py    Dash application
+  cli.py          command line interface
+  assets/         dashboard stylesheet
+tests/            pytest suite
+```
+
+## Notes and limits
+
+* VADER is an English, general-purpose lexicon; the finance additions help
+  but this is a mood gauge, not a signal. Not investment advice.
+* The Bluesky firehose is unfiltered by topic; with `SS_TRACK_TERMS` empty the
+  database grows by every English post on the network (retention keeps it
+  bounded). Set terms if you only care about a watch-list.
+* SQLite FTS5 is required (bundled with Python's `sqlite3` on all major
+  platforms).
+* Posts older than the retention window or more than five minutes in the
+  future are dropped at ingest, so a stale feed item or a client with a
+  broken clock cannot distort the live window.
+
+## License
+
+MIT, see `LICENSE` (original project © 2018 Harrison Kinsley / Sentdex).

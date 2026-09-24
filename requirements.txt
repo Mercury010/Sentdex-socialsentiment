@@ -1,11 +1,14 @@
-tweepy
-vaderSentiment
-unidecode
-dash
-dash-renderer
-dash-html-components
-dash-core-components
-plotly
-pandas
-regex
-python-memcached
+# Core (pip install -r requirements.txt)
+dash>=3.0
+plotly>=6.0
+pandas>=2.2
+vaderSentiment>=3.3.2
+websockets>=13
+feedparser>=6.0
+python-dotenv>=1.0
+# Optional sources
+praw>=7.7        # reddit
+tweepy>=4.14     # x (paid API access required)
+# Development
+pytest>=8
+flake8>=7

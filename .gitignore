@@ -1,0 +1,26 @@
+# Secrets and local configuration
+.env
+
+# Data and logs
+data/
+*.db
+*.db-wal
+*.db-shm
+*.log
+errors.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+
+# Editors / notebooks
+.ipynb_checkpoints/
+.vscode/
+.idea/
+.DS_Store
