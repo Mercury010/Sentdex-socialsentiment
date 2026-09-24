@@ -89,6 +89,16 @@ python -m socialsentiment collect --source reddit --source rss
 python -m socialsentiment collect --source x --term bitcoin
 ```
 
+Before the first live run, test every source in about half a minute:
+
+```bash
+python -m socialsentiment check                 # bluesky, rss feeds, reddit, x
+python -m socialsentiment check --source bluesky --seconds 10
+```
+
+Each line says `OK` or `FAIL` with the reason and a hint (blocked websocket,
+dead feed URL, missing credentials, token without streaming access).
+
 Other commands: `stats` (counts per source, trending), `truncate --days N`
 (retention purge; also runs hourly inside `collect`). `--db PATH` overrides
 the database location for any command and may go before or after the

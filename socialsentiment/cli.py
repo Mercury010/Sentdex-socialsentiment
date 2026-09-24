@@ -112,6 +112,15 @@ def cmd_truncate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_check(args: argparse.Namespace) -> int:
+    from socialsentiment.doctor import format_report, run_checks
+
+    terms = args.term if args.term is not None else settings.TRACK_TERMS
+    results = run_checks(args.source, seconds=args.seconds, terms=terms)
+    print(format_report(results))
+    return 0 if all(r.ok for r in results) else 1
+
+
 def cmd_stats(args: argparse.Namespace) -> int:
     if not _require_existing_db(args.db):
         return 1
@@ -241,6 +250,30 @@ def build_parser() -> argparse.ArgumentParser:
         "stats", parents=[common], help="print database statistics"
     )
     stats.set_defaults(func=cmd_stats)
+
+    check = sub.add_parser(
+        "check",
+        parents=[common],
+        help="test connectivity and credentials for each source",
+    )
+    check.add_argument(
+        "--source",
+        action="append",
+        choices=available_sources(),
+        help="source to check (repeatable; default: all except synthetic)",
+    )
+    check.add_argument(
+        "--seconds",
+        type=float,
+        default=5.0,
+        help="how long to sample the Bluesky firehose (default 5)",
+    )
+    check.add_argument(
+        "--term",
+        action="append",
+        help="also test the Google News feed for this term (repeatable)",
+    )
+    check.set_defaults(func=cmd_check)
     return parser
 
 
