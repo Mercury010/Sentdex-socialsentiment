@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.2.0] - 2026-09-24
+
+### Added
+- `socialsentiment run`: collector and dashboard in one process, opens the
+  browser; `start.bat` / `start.sh` one-click launchers that also create the
+  virtual environment on first run.
+
+### Changed
+- The live panel is bounded to the last `SS_LIVE_WINDOW_MINUTES` (default
+  60) so "posts / minute" is meaningful; older feed items stay in the
+  longer-term panel.
+
 ## [2.1.0] - 2026-09-24
 
 ### Added

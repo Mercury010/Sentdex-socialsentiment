@@ -64,6 +64,45 @@ def cmd_collect(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_run(args: argparse.Namespace) -> int:
+    """Collector and dashboard in one process; opens the browser."""
+    import threading
+    import webbrowser
+
+    from socialsentiment.dashboard import create_app
+    from socialsentiment.runner import run
+
+    sources = args.source or settings.RUN_SOURCES
+    terms = args.term if args.term is not None else settings.TRACK_TERMS
+    langs = args.lang if args.lang is not None else settings.LANGS
+    stop_event = threading.Event()
+    failure: dict[str, BaseException] = {}
+
+    def _collect() -> None:
+        try:
+            run(sources, db_path=args.db, terms=terms, langs=langs,
+                stop_event=stop_event)
+        except Exception as exc:  # surfaced after the server stops
+            failure["error"] = exc
+            log.error("collector stopped: %s", exc)
+
+    collector = threading.Thread(target=_collect, name="collector", daemon=True)
+    collector.start()
+
+    app = create_app(db_path=args.db)
+    url = f"http://{args.host}:{args.port}/"
+    if not args.no_browser:
+        threading.Timer(1.5, webbrowser.open, args=[url]).start()
+    log.info("dashboard at %s (Ctrl+C stops collector and dashboard)", url)
+    try:
+        # The Flask reloader would fork a second collector; keep debug off.
+        app.run(host=args.host, port=args.port, debug=False)
+    finally:
+        stop_event.set()
+        collector.join(timeout=15.0)
+    return 1 if failure else 0
+
+
 def cmd_dashboard(args: argparse.Namespace) -> int:
     from socialsentiment.dashboard import create_app
 
@@ -215,6 +254,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="posts per second for the synthetic source",
     )
     collect.set_defaults(func=cmd_collect)
+
+    run_parser = sub.add_parser(
+        "run",
+        parents=[common],
+        help="collector + dashboard in one process, opens the browser",
+    )
+    run_parser.add_argument(
+        "--source",
+        action="append",
+        choices=available_sources(),
+        help=f"source to collect (repeatable; default: "
+        f"{','.join(settings.RUN_SOURCES)})",
+    )
+    run_parser.add_argument(
+        "--term", action="append",
+        help="keep only posts containing this term (repeatable)",
+    )
+    run_parser.add_argument(
+        "--lang", action="append", help="keep only this language (repeatable)"
+    )
+    run_parser.add_argument("--host", default=settings.DASH_HOST)
+    run_parser.add_argument("--port", type=int, default=settings.DASH_PORT)
+    run_parser.add_argument(
+        "--no-browser", action="store_true", help="do not open a browser tab"
+    )
+    run_parser.set_defaults(func=cmd_run)
 
     dashboard = sub.add_parser(
         "dashboard", parents=[common], help="run the Dash web app"

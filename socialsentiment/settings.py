@@ -140,6 +140,9 @@ X_BEARER_TOKEN = os.environ.get("SS_X_BEARER_TOKEN", "")
 # of writing; check the current X developer docs).
 X_RULE_MAX_LENGTH = _env_int("SS_X_RULE_MAX_LENGTH", 512)
 
+# Sources started by the one-command `run` (collector + dashboard together).
+RUN_SOURCES = _env_list("SS_RUN_SOURCES", "bluesky,rss")
+
 # ---------------------------------------------------------------------------
 # Synthetic source (offline demo / testing)
 # ---------------------------------------------------------------------------
@@ -153,6 +156,9 @@ DASH_PORT = _env_int("SS_DASH_PORT", 8050)
 DASH_DEBUG = _env_bool("SS_DASH_DEBUG", False)
 DEFAULT_TERM = os.environ.get("SS_DEFAULT_TERM", "bitcoin")
 LIVE_WINDOW_POSTS = _env_int("SS_LIVE_WINDOW_POSTS", 1000)
+# The live panel shows only posts from the last N minutes (older feed items
+# stay in the longer-term panel), so "posts / minute" means what it says.
+LIVE_WINDOW_MINUTES = _env_int("SS_LIVE_WINDOW_MINUTES", 60)
 HISTORY_WINDOW_POSTS = _env_int("SS_HISTORY_WINDOW_POSTS", 10000)
 RECENT_TABLE_ROWS = _env_int("SS_RECENT_TABLE_ROWS", 12)
 LIVE_REFRESH_MS = _env_int("SS_LIVE_REFRESH_MS", 2000)
