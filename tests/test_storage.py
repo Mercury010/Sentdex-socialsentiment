@@ -139,3 +139,12 @@ def test_batch_writer_drops_bad_batch_and_keeps_going(db_path):
     writer.submit(_post(2))
     writer.stop()
     assert writer.inserted == 1 and writer.dropped == 1
+
+
+def test_fetch_since_ms(conn):
+    storage.insert_posts(conn, [_post(1, "bitcoin old", ts=1_000),
+                                _post(2, "bitcoin new", ts=5_000)])
+    recent = storage.fetch_posts(conn, "bitcoin", since_ms=2_000)
+    assert list(recent["source_id"]) == ["2"]
+    assert list(storage.fetch_posts(conn, "", since_ms=5_000)["source_id"]) == ["2"]
+    assert len(storage.fetch_posts(conn, "", since_ms=6_000)) == 0

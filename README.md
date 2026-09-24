@@ -64,6 +64,16 @@ pip install -r requirements.txt
 cp .env.example .env                                   # optional; defaults work
 ```
 
+**One click.** Put your search terms in `.env` (`SS_TRACK_TERMS=bitcoin,ethereum,nvidia`;
+copy `.env.example`), then double-click `start.bat` on Windows or run
+`./start.sh` on macOS/Linux. The first run creates the virtual environment;
+every run starts the collector and the dashboard together and opens the
+browser. Ctrl+C in that window stops both. The same thing from a terminal:
+
+```bash
+python -m socialsentiment run --term bitcoin --term ethereum   # bluesky + rss
+```
+
 Offline demo (no network, no keys) in two terminals:
 
 ```bash
@@ -119,6 +129,8 @@ Notable knobs:
 | Variable | Default | Meaning |
 |---|---|---|
 | `SS_TRACK_TERMS` | *(empty)* | Keep only posts containing one of these terms. Empty keeps the full firehose. |
+| `SS_RUN_SOURCES` | `bluesky,rss` | Sources started by `run` / `start.bat`. |
+| `SS_LIVE_WINDOW_MINUTES` | `60` | Time span of the live panel; older posts stay in the longer-term panel. |
 | `SS_LANGS` | `en` | Keep only these languages when the source reports one. |
 | `SS_RETENTION_DAYS` | `3` | Posts older than this are purged. |
 | `SS_REDDIT_SUBREDDITS` | crypto + stocks subs | Comma separated. |

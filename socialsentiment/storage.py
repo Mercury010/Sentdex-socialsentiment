@@ -197,6 +197,7 @@ def fetch_posts(
     term: str = "",
     sources: Sequence[str] | None = None,
     limit: int = 1000,
+    since_ms: int | None = None,
 ) -> pd.DataFrame:
     """Return the newest posts matching ``term`` (FTS5 prefix search).
 
@@ -204,10 +205,13 @@ def fetch_posts(
     so a feed that delivers day-old items cannot hijack the live window.
     Columns: ``id, source, source_id, ts_ms, author, lang, text, sentiment,
     url``.  An empty ``term`` returns the newest posts regardless of
-    content.
+    content.  ``since_ms`` keeps only posts stamped at or after that time.
     """
     query = fts_query(term)
     clause, params = _source_filter(sources)
+    if since_ms is not None:
+        clause += " AND p.ts_ms >= ?"
+        params.append(int(since_ms))
     if query:
         sql = (
             f"{_POST_SELECT} FROM posts_fts "

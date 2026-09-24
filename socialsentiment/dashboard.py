@@ -446,15 +446,20 @@ def create_app(db_path: Path | str = settings.DB_PATH) -> Dash:
     )
     def update_live(_tick: int, term: str, sources: list[str]) -> tuple:
         term = (term or "").strip()
+        minutes = settings.LIVE_WINDOW_MINUTES
         posts = storage.fetch_posts(
-            conn, term, sources or None, settings.LIVE_WINDOW_POSTS
+            conn,
+            term,
+            sources or None,
+            settings.LIVE_WINDOW_POSTS,
+            since_ms=storage.now_ms() - minutes * 60_000,
         )
         stats = analytics.summary(posts)
         label = _label(term)
         mean = stats["mean"]
         rate = stats["per_minute"]
         tiles = [
-            _tile("Posts in window", f"{stats['count']:,}", label),
+            _tile(f"Posts, last {minutes} min", f"{stats['count']:,}", label),
             _tile(
                 "Mean sentiment",
                 "–" if mean is None else f"{mean:+.3f}",
@@ -465,10 +470,10 @@ def create_app(db_path: Path | str = settings.DB_PATH) -> Dash:
             _tile("Negative", _fmt_pct(stats["negative_pct"]),
                   f"≤ -{settings.POSITIVE_THRESHOLD:g}"),
             _tile("Posts / minute", "–" if rate is None else f"{rate:.1f}",
-                  "over the live window"),
+                  f"over the last {minutes} min"),
         ]
         figure = sentiment_volume_figure(
-            posts, f"Live sentiment for {label}", bins=100
+            posts, f"Live sentiment for {label}, last {minutes} min", bins=100
         )
         table = posts_table(posts.head(settings.RECENT_TABLE_ROWS))
         return tiles, figure, table, f"Most recent posts for {label}"
