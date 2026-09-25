@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "socialsentiment"
-version = "2.2.2"
+version = "2.2.3"
 description = "Multi-source live social sentiment tracker with a Dash dashboard"
 readme = "README.md"
 license = "MIT"

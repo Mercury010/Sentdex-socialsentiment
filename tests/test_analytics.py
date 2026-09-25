@@ -34,3 +34,22 @@ def test_summary():
 def test_summary_empty_and_short_window():
     assert analytics.summary(pd.DataFrame(columns=["ts_ms", "sentiment"]))["count"] == 0
     assert analytics.summary(_frame(5))["per_minute"] is None
+
+
+def test_prepare_uses_display_timezone(monkeypatch):
+    from zoneinfo import ZoneInfo
+
+    from socialsentiment import settings
+
+    monkeypatch.setattr(settings, "TIMEZONE", "Europe/Athens")
+    analytics.display_timezone.cache_clear()
+    try:
+        frame = analytics.prepare(_frame(2, start=1_700_000_000_000))
+        assert frame["ts"].dt.tz == ZoneInfo("Europe/Athens")
+        assert frame["ts"].iloc[0].hour == 0  # 22:13 UTC -> 00:13 Athens
+        assert analytics.timezone_label() == "Europe/Athens"
+        monkeypatch.setattr(settings, "TIMEZONE", "Not/AZone")
+        analytics.display_timezone.cache_clear()
+        assert analytics.display_timezone() is not None
+    finally:
+        analytics.display_timezone.cache_clear()

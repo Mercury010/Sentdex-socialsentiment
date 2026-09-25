@@ -1,3 +1,3 @@
 """Multi-source live social sentiment: collectors, storage and dashboard."""
 
-__version__ = "2.2.2"
+__version__ = "2.2.3"

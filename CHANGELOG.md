@@ -3,6 +3,12 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.2.3] - 2026-09-25
+
+### Changed
+- Chart axes and the posts table are shown in `SS_TIMEZONE` (IANA name)
+  or the machine's local offset instead of UTC.
+
 ## [2.2.2] - 2026-09-25
 
 ### Changed

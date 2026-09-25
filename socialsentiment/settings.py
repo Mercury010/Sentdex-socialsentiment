@@ -154,6 +154,10 @@ SYNTHETIC_RATE_PER_SECOND = _env_float("SS_SYNTHETIC_RATE_PER_SECOND", 5.0)
 # ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
+# IANA name (e.g. Europe/Athens) for chart axes and the posts table.  Empty
+# means the machine's current UTC offset (correct now, but it does not
+# follow daylight-saving changes inside the retention window).
+TIMEZONE = os.environ.get("SS_TIMEZONE", "").strip()
 DASH_HOST = os.environ.get("SS_DASH_HOST", "127.0.0.1")
 DASH_PORT = _env_int("SS_DASH_PORT", 8050)
 DASH_DEBUG = _env_bool("SS_DASH_DEBUG", False)
