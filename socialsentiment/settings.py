@@ -109,6 +109,9 @@ REDDIT_SUBREDDITS = _env_list(
     "SS_REDDIT_SUBREDDITS",
     "CryptoCurrency,Bitcoin,ethereum,stocks,wallstreetbets,investing",
 )
+# The subreddit list already defines the topic, so by default TRACK_TERMS
+# is not applied to Reddit ("it's going to 100k" in r/Bitcoin is kept).
+REDDIT_APPLY_TERMS = _env_bool("SS_REDDIT_APPLY_TERMS", False)
 
 # ---------------------------------------------------------------------------
 # RSS / news (no credentials required)

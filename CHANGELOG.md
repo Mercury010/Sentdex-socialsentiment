@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.2.2] - 2026-09-25
+
+### Changed
+- Reddit keeps every comment and submission from the configured
+  subreddits; `SS_TRACK_TERMS` applies to it only with
+  `SS_REDDIT_APPLY_TERMS=true`.
+
 ## [2.2.1] - 2026-09-25
 
 ### Changed

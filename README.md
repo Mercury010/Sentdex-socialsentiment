@@ -133,7 +133,7 @@ Notable knobs:
 | `SS_LIVE_WINDOW_MINUTES` | `60` | Time span of the live panel; older posts stay in the longer-term panel. |
 | `SS_LANGS` | `en` | Keep only these languages when the source reports one. |
 | `SS_RETENTION_DAYS` | `3` | Posts older than this are purged. |
-| `SS_REDDIT_SUBREDDITS` | crypto + stocks subs | Comma separated. |
+| `SS_REDDIT_SUBREDDITS` | crypto + stocks subs | Comma separated. Tracked terms are not applied to Reddit unless `SS_REDDIT_APPLY_TERMS=true`; the subreddits are the topic. |
 | `SS_RSS_FEEDS` | CoinDesk, CoinTelegraph, CNBC finance | Plus one Google News search feed per tracked term. |
 | `SS_DEFAULT_TERM` | `bitcoin` | Initial dashboard search. |
 

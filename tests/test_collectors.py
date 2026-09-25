@@ -311,3 +311,15 @@ def test_synthetic_live_stream_drifts():
     first = [scorer.score(p.text) for p in sink.posts[0:300]]
     second = [scorer.score(p.text) for p in sink.posts[300:600]]
     assert sum(second) / len(second) > sum(first) / len(first)
+
+
+def test_reddit_ignores_terms_unless_asked():
+    sink = _Sink()
+    collector = RedditCollector(sink, subreddits=["Bitcoin"], client_id="i",
+                                client_secret="s", terms=["bitcoin"])
+    assert collector.emit(Post("reddit", "1", 1, "going to 100k"))
+    strict = RedditCollector(_Sink(), subreddits=["Bitcoin"], client_id="i",
+                             client_secret="s", terms=["bitcoin"],
+                             apply_terms=True)
+    assert not strict.emit(Post("reddit", "2", 1, "going to 100k"))
+    assert strict.emit(Post("reddit", "3", 1, "Bitcoin to 100k"))
