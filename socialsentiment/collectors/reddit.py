@@ -59,6 +59,10 @@ def parse_submission(submission: Any) -> Post | None:
 class RedditCollector(Collector):
     """Stream new comments (and optionally submissions) from subreddits.
 
+    By default the tracked terms are not applied here (``apply_terms``):
+    the subreddit list already selects the topic, and most comments in
+    r/Bitcoin never spell out the word.
+
     Each stream runs in its own worker thread.  If either worker dies (PRAW
     re-raises server and network errors from the stream generator) the whole
     connection is torn down and :meth:`Collector.run` reconnects with
@@ -76,9 +80,14 @@ class RedditCollector(Collector):
         client_secret: str = settings.REDDIT_CLIENT_SECRET,
         user_agent: str = settings.REDDIT_USER_AGENT,
         include_submissions: bool = True,
+        apply_terms: bool = settings.REDDIT_APPLY_TERMS,
         **kwargs: Any,
     ) -> None:
         super().__init__(sink, **kwargs)
+        if not apply_terms:
+            # The subreddits are the topic filter; keep every item.
+            self.terms = []
+            self._term_pattern = None
         if not subreddits:
             raise ValueError("reddit: at least one subreddit is required")
         if not client_id or not client_secret:
