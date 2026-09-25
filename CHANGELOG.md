@@ -3,6 +3,13 @@
 All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.2.1] - 2026-09-25
+
+### Changed
+- Tracked terms match whole words (case-insensitive, phrases allowed)
+  instead of substrings, so short tickers such as `btc` and `eth` can be
+  tracked without matching `together` or `method`.
+
 ## [2.2.0] - 2026-09-24
 
 ### Added

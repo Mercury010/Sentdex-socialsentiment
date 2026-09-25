@@ -9,7 +9,7 @@ import time
 from collections.abc import Callable, Sequence
 
 from socialsentiment.models import Post
-from socialsentiment.text import contains_any
+from socialsentiment.text import compile_terms
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +42,7 @@ class Collector(abc.ABC):
     ) -> None:
         self._sink = sink
         self.terms = [term.lower() for term in terms if term]
+        self._term_pattern = compile_terms(self.terms)
         self.langs = {lang.lower() for lang in langs if lang}
         self.max_age_ms = max_age_ms
         self.max_future_ms = max_future_ms
@@ -55,7 +56,7 @@ class Collector(abc.ABC):
             primary = post.lang.split("-")[0].lower()
             if primary not in self.langs:
                 return False
-        if self.terms and not contains_any(post.text, self.terms):
+        if self._term_pattern and not self._term_pattern.search(post.text):
             return False
         if self.max_age_ms is not None or self.max_future_ms is not None:
             now_ms = int(time.time() * 1000)

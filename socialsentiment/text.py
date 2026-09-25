@@ -141,7 +141,25 @@ def fts_query(term: str) -> str:
     return " ".join(f'"{token}"*' for token in tokens)
 
 
+def compile_terms(terms: Iterable[str]) -> re.Pattern[str] | None:
+    """Compile tracked terms into one whole-word, case-insensitive pattern.
+
+    A term matches only when it is not glued to other word characters, so
+    ``eth`` matches ``ETH`` and ``$eth`` but not ``together`` or ``method``.
+    Multi-word terms match as phrases.  Returns ``None`` for no terms.
+    """
+    cleaned = [term.strip() for term in terms if term and term.strip()]
+    if not cleaned:
+        return None
+    alternatives = "|".join(
+        re.escape(term) for term in sorted(cleaned, key=len, reverse=True)
+    )
+    return re.compile(
+        rf"(?<![^\W_])(?:{alternatives})(?![^\W_])", re.IGNORECASE
+    )
+
+
 def contains_any(text: str, terms: Iterable[str]) -> bool:
-    """Case-insensitive substring test against a list of terms."""
-    lowered = (text or "").lower()
-    return any(term.lower() in lowered for term in terms)
+    """Whole-word, case-insensitive test against a list of terms."""
+    pattern = compile_terms(terms)
+    return bool(pattern and pattern.search(text or ""))
