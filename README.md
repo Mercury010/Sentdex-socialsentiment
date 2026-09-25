@@ -136,6 +136,7 @@ Notable knobs:
 | `SS_REDDIT_SUBREDDITS` | crypto + stocks subs | Comma separated. Tracked terms are not applied to Reddit unless `SS_REDDIT_APPLY_TERMS=true`; the subreddits are the topic. |
 | `SS_RSS_FEEDS` | CoinDesk, CoinTelegraph, CNBC finance | Plus one Google News search feed per tracked term. |
 | `SS_DEFAULT_TERM` | `bitcoin` | Initial dashboard search. |
+| `SS_TIMEZONE` | *(machine offset)* | IANA zone for chart axes and the table, e.g. `Europe/Athens`. |
 
 ## Data sources: what is free in 2026
 

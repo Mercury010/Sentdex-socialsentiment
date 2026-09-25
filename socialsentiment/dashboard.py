@@ -8,7 +8,7 @@ thin marks, hairline grid, and colour that encodes polarity only.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -258,7 +258,9 @@ def _fmt_pct(value: float | None) -> str:
 
 def _format_stamp(ts_ms: Any) -> str:
     try:
-        stamp = datetime.fromtimestamp(float(ts_ms) / 1000, tz=timezone.utc)
+        stamp = datetime.fromtimestamp(
+            float(ts_ms) / 1000, tz=analytics.display_timezone()
+        )
     except (ValueError, OverflowError, OSError, TypeError):
         return "–"
     return stamp.strftime("%d/%m %H:%M:%S")
@@ -294,8 +296,8 @@ def posts_table(posts: pd.DataFrame) -> html.Table:
             )
         )
     header = html.Thead(
-        html.Tr([html.Th("UTC"), html.Th("Source"), html.Th("Post"),
-                 html.Th("Score")])
+        html.Tr([html.Th(analytics.timezone_label()), html.Th("Source"),
+                 html.Th("Post"), html.Th("Score")])
     )
     return html.Table([header, html.Tbody(rows)], className="posts")
 

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import math
+from datetime import datetime, tzinfo
+from functools import lru_cache
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
 
@@ -10,10 +13,31 @@ from socialsentiment import settings
 from socialsentiment.sentiment import classify
 
 
+@lru_cache(maxsize=1)
+def display_timezone() -> tzinfo:
+    """Timezone for everything shown to the user (see ``SS_TIMEZONE``)."""
+    name = settings.TIMEZONE
+    if name:
+        try:
+            return ZoneInfo(name)
+        except ZoneInfoNotFoundError:
+            pass
+    local = datetime.now().astimezone().tzinfo
+    return local if local is not None else ZoneInfo("UTC")
+
+
+def timezone_label() -> str:
+    tz = display_timezone()
+    key = getattr(tz, "key", None)
+    return key or datetime.now(tz).strftime("UTC%z")
+
+
 def prepare(posts: pd.DataFrame) -> pd.DataFrame:
-    """Sort by time and add a ``ts`` datetime column (UTC)."""
+    """Sort by time and add a ``ts`` column in the display timezone."""
     frame = posts.sort_values("ts_ms", kind="stable").reset_index(drop=True)
-    frame["ts"] = pd.to_datetime(frame["ts_ms"], unit="ms", utc=True)
+    frame["ts"] = pd.to_datetime(
+        frame["ts_ms"], unit="ms", utc=True
+    ).dt.tz_convert(display_timezone())
     return frame
 
 
