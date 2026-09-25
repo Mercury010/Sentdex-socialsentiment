@@ -56,6 +56,17 @@ def test_term_counts_and_contains_any():
     assert not contains_any("gold", ["bitcoin", "eth"])
 
 
+def test_terms_match_whole_words_only():
+    assert contains_any("$ETH is pumping", ["eth"])
+    assert contains_any("bitcoin's rally", ["bitcoin"])
+    assert contains_any("BTC/USD at 84k", ["btc"])
+    assert contains_any("the fed rate decision", ["fed rate"])
+    assert not contains_any("whether we go together", ["eth"])
+    assert not contains_any("method acting", ["eth"])
+    assert not contains_any("bitcoins", ["bitcoin"])
+    assert not contains_any("anything", [])
+
+
 def test_strip_html_keeps_escaped_brackets():
     assert strip_html("Bitcoin drops &lt;5%&gt; as <b>ETF</b> outflows") == (
         "Bitcoin drops <5%> as ETF outflows"

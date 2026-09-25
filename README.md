@@ -128,7 +128,7 @@ Notable knobs:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SS_TRACK_TERMS` | *(empty)* | Keep only posts containing one of these terms. Empty keeps the full firehose. |
+| `SS_TRACK_TERMS` | *(empty)* | Keep only posts containing one of these terms as a whole word (`btc` matches `$BTC`, not `subtract`). Empty keeps the full firehose. |
 | `SS_RUN_SOURCES` | `bluesky,rss` | Sources started by `run` / `start.bat`. |
 | `SS_LIVE_WINDOW_MINUTES` | `60` | Time span of the live panel; older posts stay in the longer-term panel. |
 | `SS_LANGS` | `en` | Keep only these languages when the source reports one. |
